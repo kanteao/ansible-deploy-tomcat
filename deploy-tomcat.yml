@@ -1,0 +1,71 @@
+---
+- name: Installer Tomcat et déployer une application
+  hosts: tomcat
+  become: yes
+  vars:
+    tomcat_version: 9.0.89
+    tomcat_user: tomcat
+    tomcat_group: tomcat
+    tomcat_install_dir: /opt/tomcat
+    war_file: app.war
+  tasks:
+
+    - name: Installer Java
+      apt:
+        name: openjdk-11-jdk
+        state: present
+        update_cache: yes
+
+    - name: Créer un utilisateur pour Tomcat
+      user:
+        name: "{{ tomcat_user }}"
+        shell: /bin/false
+
+    - name: Télécharger Tomcat
+      get_url:
+        url: "https://downloads.apache.org/tomcat/tomcat-9/v{{ tomcat_version }}/bin/apache-tomcat-{{ tomcat_version }}.tar.gz"
+        dest: /tmp/apache-tomcat.tar.gz
+
+    - name: Créer le dossier d'installation Tomcat
+      file:
+        path: "{{ tomcat_install_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Extraire Tomcat
+      unarchive:
+        src: /tmp/apache-tomcat.tar.gz
+        dest: "{{ tomcat_install_dir }}"
+        remote_src: yes
+        extra_opts: [--strip-components=1]
+
+    - name: Donner les droits au user tomcat
+      file:
+        path: "{{ tomcat_install_dir }}"
+        state: directory
+        recurse: yes
+        owner: "{{ tomcat_user }}"
+        group: "{{ tomcat_group }}"
+
+    - name: Copier le service systemd
+      template:
+        src: templates/tomcat.service.j2
+        dest: /etc/systemd/system/tomcat.service
+        mode: '0644'
+
+    - name: Démarrer et activer le service Tomcat
+      systemd:
+        name: tomcat
+        daemon_reload: yes
+        enabled: yes
+        state: started
+
+    - name: Copier le fichier WAR dans webapps
+      copy:
+        src: "files/{{ war_file }}"
+        dest: "{{ tomcat_install_dir }}/webapps/{{ war_file }}"
+        owner: "{{ tomcat_user }}"
+        group: "{{ tomcat_group }}"
+        mode: '0644'
